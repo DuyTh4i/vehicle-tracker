@@ -24,3 +24,66 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@property --neon-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* Viền neon 2 đốm xanh nước biển / đỏ tím đối diện, quay theo chiều kim đồng hồ. */
+.neon-card::before,
+.neon-card::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 3px;
+  background: conic-gradient(
+    from var(--neon-angle),
+    rgba(59, 130, 246, 0) 0deg,
+    rgba(59, 130, 246, 0.1) 18deg,
+    rgba(59, 130, 246, 0.38) 38deg,
+    rgba(59, 130, 246, 0.78) 52deg,
+    #3b82f6 58deg,
+    rgba(59, 130, 246, 0.45) 63deg,
+    rgba(59, 130, 246, 0) 72deg,
+    rgba(217, 70, 239, 0) 180deg,
+    rgba(217, 70, 239, 0.1) 198deg,
+    rgba(217, 70, 239, 0.38) 218deg,
+    rgba(217, 70, 239, 0.78) 232deg,
+    #d946ef 238deg,
+    rgba(217, 70, 239, 0.45) 243deg,
+    rgba(217, 70, 239, 0) 252deg,
+    rgba(59, 130, 246, 0) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: neon-spin 3s linear infinite;
+}
+
+.neon-card::before {
+  filter: saturate(1.4);
+}
+
+.neon-card::after {
+  filter: blur(16px) saturate(1.4) brightness(1.2);
+  opacity: 1;
+}
+
+@keyframes neon-spin {
+  to {
+    --neon-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neon-card::before,
+  .neon-card::after {
+    animation: none;
+  }
+}
