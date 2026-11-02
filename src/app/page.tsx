@@ -35,6 +35,22 @@ export interface MaintenanceEvent {
   maintenance_items?: MaintenanceItem[];
 }
 
+// Kiểu chung cho cả sự kiện lấy từ DB và mốc "Sắp tới" sinh tại client.
+type TimelineItem = {
+  id: string;
+  title: string;
+  event_type: 'BẢO DƯỠNG' | 'SỬA CHỮA';
+  maintenance_tier?: MaintenanceTier;
+  target_odo: number;
+  due_date: string;
+  total_cost: number;
+  location?: string;
+  notes?: string;
+  maintenance_items?: MaintenanceItem[];
+  isFuture: boolean;
+  isNearest: boolean;
+};
+
 function generateNextMilestone(currentOdo: number, type: 'CAR' | 'MOTORBIKE', lastMaintenanceDate?: string) {
   const step = type === 'CAR' ? 5000 : 2000;
   const monthsStep = type === 'CAR' ? 6 : 3; 
@@ -214,7 +230,7 @@ export default function Dashboard() {
     ? generateNextMilestone(activeVehicle.current_odo, activeVehicle.vehicle_type, lastMaintenance?.due_date) 
     : null;
 
-  const unifiedTimeline = [
+  const unifiedTimeline: TimelineItem[] = [
     ...(virtualUpcomingEvent ? [virtualUpcomingEvent] : []),
     ...pastEvents.map((h) => ({ ...h, isFuture: false, isNearest: false }))
   ];
