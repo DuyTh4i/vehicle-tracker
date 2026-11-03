@@ -46,11 +46,11 @@ textarea,
 /* Nền light mode tông ngà vàng ấm, có mesh nhẹ để kính có màu nhìn xuyên qua. */
 .app-surface {
   background:
-    radial-gradient(55% 45% at 12% 8%, rgba(254, 215, 170, 0.40), transparent 60%),
-    radial-gradient(52% 42% at 88% 10%, rgba(254, 205, 211, 0.32), transparent 62%),
-    radial-gradient(60% 48% at 50% 52%, rgba(255, 247, 237, 0.45), transparent 68%),
-    radial-gradient(58% 48% at 82% 92%, rgba(253, 186, 116, 0.24), transparent 64%),
-    radial-gradient(50% 44% at 18% 88%, rgba(254, 226, 226, 0.32), transparent 62%),
+    radial-gradient(55% 45% at 12% 8%, rgba(254, 215, 170, 0.22), transparent 60%),
+    radial-gradient(52% 42% at 88% 10%, rgba(254, 205, 211, 0.18), transparent 62%),
+    radial-gradient(60% 48% at 50% 52%, rgba(255, 247, 237, 0.28), transparent 68%),
+    radial-gradient(58% 48% at 82% 92%, rgba(253, 186, 116, 0.14), transparent 64%),
+    radial-gradient(50% 44% at 18% 88%, rgba(254, 226, 226, 0.18), transparent 62%),
     linear-gradient(140deg, #faf9f7 0%, #f4f1ed 52%, #f6f3f0 100%);
 }
 
