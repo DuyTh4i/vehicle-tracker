@@ -1313,16 +1313,16 @@ export default function Dashboard() {
     !!activeVehicle && Number.isInteger(serviceFormOdo) && serviceFormOdo > activeVehicle.current_odo;
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans transition-colors duration-200 relative">
+    <div className="flex flex-col h-[100dvh] bg-[#f3f1ec] dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans transition-colors duration-200 relative">
       
       {/* HEADER DROPDOWN */}
-      <header className="flex-shrink-0 border-b border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-950 px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-center z-20 relative shadow-sm">
+      <header className="flex-shrink-0 border-b border-[#e7e2db] dark:border-zinc-800/60 bg-[#faf8f5] dark:bg-zinc-950 px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-center z-20 relative shadow-sm">
         <div className="relative">
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center gap-3 px-2 py-1.5 -ml-2 sm:gap-4 sm:px-3 sm:py-2 sm:-ml-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+            className="flex items-center gap-3 px-2 py-1.5 -ml-2 sm:gap-4 sm:px-3 sm:py-2 sm:-ml-3 rounded-xl hover:bg-[#f3efe9] dark:hover:bg-zinc-900 transition-colors"
           >
-            <div className="bg-zinc-100 dark:bg-zinc-800 p-2 sm:p-2.5 rounded-lg text-zinc-600 dark:text-zinc-300">
+            <div className="bg-[#f3efe9] dark:bg-zinc-800 p-2 sm:p-2.5 rounded-lg text-zinc-600 dark:text-zinc-300">
               {activeVehicle?.vehicle_type === 'MOTORBIKE' ? <Bike className="w-5 h-5 sm:w-6 sm:h-6" /> : <Car className="w-5 h-5 sm:w-6 sm:h-6" />}
             </div>
             <div className="text-left flex flex-col justify-center">
@@ -1350,10 +1350,10 @@ export default function Dashboard() {
           {isMenuOpen && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setIsMenuOpen(false)}></div>
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 sm:mt-3 w-[min(20rem,calc(100vw-2rem))] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl shadow-xl z-40 overflow-hidden py-1.5 sm:py-2">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 sm:mt-3 w-[min(20rem,calc(100vw-2rem))] bg-[#fffdfa] dark:bg-zinc-900 border border-[#e7e2db] dark:border-zinc-800/60 rounded-2xl shadow-xl z-40 overflow-hidden py-1.5 sm:py-2">
                 <button
                   onClick={openCreateVehicleForm}
-                  className="w-full flex items-center gap-3 px-4 py-3 sm:px-5 sm:py-4 text-left border-b border-zinc-100 dark:border-zinc-800/60 mb-1.5 sm:mb-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3 sm:px-5 sm:py-4 text-left border-b border-[#ede8e2] dark:border-zinc-800/60 mb-1.5 sm:mb-2 hover:bg-[#f7f2ec] dark:hover:bg-zinc-800/50 transition-colors"
                 >
                   <Plus size={18} className="flex-shrink-0 text-zinc-500 dark:text-zinc-400" />
                   <div>
@@ -1368,7 +1368,7 @@ export default function Dashboard() {
                     return (
                       <div
                         key={v.id}
-                        className="w-full flex items-center hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                        className="w-full flex items-center hover:bg-[#f7f2ec] dark:hover:bg-zinc-800/50 transition-colors"
                       >
                         <button
                           type="button"
@@ -1401,7 +1401,7 @@ export default function Dashboard() {
                           type="button"
                           aria-label={`Chỉnh sửa ${v.name}`}
                           onClick={() => openEditVehicleForm(v)}
-                          className="flex-shrink-0 mr-2 sm:mr-3 rounded-lg p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                          className="flex-shrink-0 mr-2 sm:mr-3 rounded-lg p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-[#f3efe9] dark:hover:bg-zinc-800 transition-colors"
                         >
                           <Pencil size={16} />
                         </button>
@@ -1416,7 +1416,7 @@ export default function Dashboard() {
       </header>
 
       {/* MAIN TIMELINE CONTENT */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-8 bg-zinc-50 dark:bg-zinc-950 transition-colors duration-200 relative">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-8 app-surface transition-colors duration-200 relative">
         <div className="max-w-4xl mx-auto pb-24 sm:pb-28 pt-4 sm:pt-6">
 
           {/* Lỗi tải lịch sử: vẫn giữ mốc "Sắp tới" vì mốc này tính từ dữ liệu xe */}
@@ -1523,8 +1523,8 @@ export default function Dashboard() {
                                   className={`inline-block font-mono py-0.5 sm:py-1 rounded-md ${
                                     isNearest
                                       ? odoIsCloser
-                                        ? 'text-xs sm:text-sm md:text-base text-sky-600 dark:text-sky-400 font-bold'
-                                        : 'text-[10px] sm:text-[11px] md:text-xs text-sky-600/70 dark:text-sky-400/70 font-medium'
+                                        ? 'text-xs sm:text-sm md:text-base text-orange-700/90 dark:text-sky-400/90 font-bold'
+                                        : 'text-[10px] sm:text-[11px] md:text-xs text-orange-700/70 dark:text-sky-400/70 font-medium'
                                       : 'text-[11px] sm:text-xs md:text-sm text-zinc-600 dark:text-zinc-300 font-bold'
                                   }`}
                                 >
@@ -1533,15 +1533,15 @@ export default function Dashboard() {
                                 {isNearest && (
                                   <span
                                     aria-hidden="true"
-                                    className="my-1 block h-px w-12 sm:w-16 md:w-20 bg-sky-500/40 dark:bg-sky-400/40"
+                                    className="my-1 block h-px w-full bg-orange-500/40 dark:bg-sky-400/40"
                                   />
                                 )}
                                 <span
                                   className={`mt-1 sm:mt-1.5 tracking-widest ${
                                     isNearest
                                       ? dateIsCloser
-                                        ? 'text-[11px] sm:text-sm text-sky-600 dark:text-sky-400 font-bold'
-                                        : 'text-[9px] sm:text-[11px] text-sky-600/70 dark:text-sky-400/70 font-medium'
+                                        ? 'text-[11px] sm:text-sm text-orange-700/90 dark:text-sky-400/90 font-bold'
+                                        : 'text-[9px] sm:text-[11px] text-orange-700/70 dark:text-sky-400/70 font-medium'
                                       : 'text-[10px] sm:text-xs text-zinc-400 font-medium'
                                   }`}
                                 >
@@ -1549,12 +1549,12 @@ export default function Dashboard() {
                                 </span>
                               </div>
                               <div className="flex items-center">
-                                <div className={`w-2 md:w-3 h-[2px] z-10 ${isNearest ? 'bg-sky-500 dark:bg-sky-400' : 'bg-zinc-300 dark:bg-zinc-700'}`}></div>
+                                <div className={`w-2 md:w-3 h-[2px] z-10 ${isNearest ? 'bg-orange-500 dark:bg-sky-400' : 'bg-zinc-300 dark:bg-zinc-700'}`}></div>
                               </div>
                               <div className="relative flex items-center justify-center w-0">
                                 <div className={`absolute rounded-full z-10
                                   ${isNearest
-                                    ? 'bg-sky-500 dark:bg-sky-400 w-3 h-3 md:w-4 md:h-4 shadow-[0_0_8px_rgba(56,189,248,0.6)]'
+                                    ? 'bg-orange-500 dark:bg-sky-400 w-3 h-3 md:w-4 md:h-4 shadow-[0_0_8px_rgba(249,115,22,0.6)] dark:shadow-[0_0_8px_rgba(56,189,248,0.6)]'
                                     : 'bg-zinc-400/50 dark:bg-zinc-500/50 w-2 h-2 md:w-2.5 md:h-2.5'}`}>
                                 </div>
                               </div>

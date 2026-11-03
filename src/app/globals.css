@@ -43,18 +43,36 @@ textarea,
   -webkit-touch-callout: default !important;
 }
 
+/* Nền light mode tông ngà vàng ấm, có mesh nhẹ để kính có màu nhìn xuyên qua. */
+.app-surface {
+  background:
+    radial-gradient(55% 45% at 12% 8%, rgba(254, 215, 170, 0.40), transparent 60%),
+    radial-gradient(52% 42% at 88% 10%, rgba(254, 205, 211, 0.32), transparent 62%),
+    radial-gradient(60% 48% at 50% 52%, rgba(255, 247, 237, 0.45), transparent 68%),
+    radial-gradient(58% 48% at 82% 92%, rgba(253, 186, 116, 0.24), transparent 64%),
+    radial-gradient(50% 44% at 18% 88%, rgba(254, 226, 226, 0.32), transparent 62%),
+    linear-gradient(140deg, #faf9f7 0%, #f4f1ed 52%, #f6f3f0 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-surface {
+    background: #09090b;
+  }
+}
+
 /* Card sự kiện kiểu kính ColorOS: nền trong, viền sáng, bóng mềm. */
 .glass-card {
   isolation: isolate;
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.16) 42%, rgba(255, 255, 255, 0.10) 100%),
-    rgba(255, 255, 255, 0.46);
-  -webkit-backdrop-filter: blur(36px) saturate(150%);
-  backdrop-filter: blur(36px) saturate(150%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18) 42%, rgba(255, 255, 255, 0.10) 100%),
+    rgba(255, 255, 255, 0.30);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
   box-shadow:
-    0 18px 42px rgba(24, 24, 27, 0.10),
-    0 2px 8px rgba(24, 24, 27, 0.05),
+    0 0 0 1px rgba(24, 24, 27, 0.05),
+    0 22px 50px rgba(15, 23, 42, 0.12),
+    0 4px 12px rgba(15, 23, 42, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
@@ -79,31 +97,31 @@ textarea,
   position: relative;
   z-index: 1;
   background:
-    radial-gradient(60% 22% at 50% 104%, rgba(240, 249, 255, 0.65), rgba(14, 165, 233, 0.18) 48%, transparent 76%),
-    radial-gradient(140% 80% at 50% 118%, rgba(14, 165, 233, 0.24), rgba(14, 165, 233, 0.09) 38%, rgba(14, 165, 233, 0.03) 58%, transparent 74%),
-    radial-gradient(30% 45% at 2% 104%, rgba(14, 165, 233, 0.09), transparent 70%),
-    radial-gradient(30% 45% at 98% 104%, rgba(14, 165, 233, 0.09), transparent 70%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.16) 42%, rgba(255, 255, 255, 0.10) 100%),
-    rgba(255, 255, 255, 0.46);
+    linear-gradient(0deg, rgba(251, 146, 60, 0.08), transparent 16%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.12) 42%, rgba(255, 255, 255, 0.08) 100%),
+    rgba(255, 255, 255, 0.24);
   box-shadow:
-    inset 0 -1px 0 rgba(125, 211, 252, 0.40),
-    inset 0 -14px 28px rgba(14, 165, 233, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    0 0 0 1px rgba(251, 146, 60, 0.22),
+    0 12px 30px rgba(24, 24, 27, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 2px 6px rgba(255, 255, 255, 0.20),
+    inset 0 -1px 0 rgba(251, 146, 60, 0.70),
+    inset 0 -6px 12px rgba(251, 146, 60, 0.10);
 }
 
 @media (prefers-color-scheme: dark) {
   .glass-card-nearest > .glass-card {
     background:
-      radial-gradient(60% 22% at 50% 104%, rgba(224, 242, 254, 0.48), rgba(56, 189, 248, 0.20) 48%, transparent 76%),
-      radial-gradient(140% 80% at 50% 118%, rgba(56, 189, 248, 0.44), rgba(34, 211, 238, 0.18) 38%, rgba(34, 211, 238, 0.04) 58%, transparent 74%),
-      radial-gradient(30% 45% at 2% 104%, rgba(56, 189, 248, 0.16), transparent 70%),
-      radial-gradient(30% 45% at 98% 104%, rgba(56, 189, 248, 0.16), transparent 70%),
+      linear-gradient(0deg, rgba(56, 189, 248, 0.08), transparent 16%),
       linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.02) 38%, transparent 100%),
       rgba(72, 72, 80, 0.32);
     box-shadow:
-      inset 0 -1px 0 rgba(186, 230, 253, 0.45),
-      inset 0 -14px 28px rgba(34, 211, 238, 0.14),
-      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      0 0 0 1px rgba(56, 189, 248, 0.22),
+      0 12px 30px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 2px 6px rgba(255, 255, 255, 0.10),
+      inset 0 -1px 0 rgba(125, 211, 252, 0.70),
+      inset 0 -6px 12px rgba(56, 189, 248, 0.10);
   }
 }
 
