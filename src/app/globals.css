@@ -25,65 +25,171 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-@property --neon-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
+/* Chặn bôi đen/copy mọi nội dung hiển thị (global). */
+*,
+*::before,
+*::after {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
-/* Viền neon 2 đốm xanh nước biển / đỏ tím đối diện, quay theo chiều kim đồng hồ. */
-.neon-card::before,
-.neon-card::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  z-index: 2;
-  border-radius: inherit;
-  padding: 3px;
-  background: conic-gradient(
-    from var(--neon-angle),
-    rgba(59, 130, 246, 0) 0deg,
-    rgba(59, 130, 246, 0.1) 18deg,
-    rgba(59, 130, 246, 0.38) 38deg,
-    rgba(59, 130, 246, 0.78) 52deg,
-    #3b82f6 58deg,
-    rgba(59, 130, 246, 0.45) 63deg,
-    rgba(59, 130, 246, 0) 72deg,
-    rgba(217, 70, 239, 0) 180deg,
-    rgba(217, 70, 239, 0.1) 198deg,
-    rgba(217, 70, 239, 0.38) 218deg,
-    rgba(217, 70, 239, 0.78) 232deg,
-    #d946ef 238deg,
-    rgba(217, 70, 239, 0.45) 243deg,
-    rgba(217, 70, 239, 0) 252deg,
-    rgba(59, 130, 246, 0) 360deg
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-  animation: neon-spin 3s linear infinite;
+/* Ô nhập vẫn được chọn, copy và paste bình thường. */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
 }
 
-.neon-card::before {
-  filter: saturate(1.4);
+/* Card sự kiện kiểu kính ColorOS: nền trong, viền sáng, bóng mềm. */
+.glass-card {
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.16) 42%, rgba(255, 255, 255, 0.10) 100%),
+    rgba(255, 255, 255, 0.46);
+  -webkit-backdrop-filter: blur(36px) saturate(150%);
+  backdrop-filter: blur(36px) saturate(150%);
+  box-shadow:
+    0 18px 42px rgba(24, 24, 27, 0.10),
+    0 2px 8px rgba(24, 24, 27, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
-.neon-card::after {
-  filter: blur(16px) saturate(1.4) brightness(1.2);
-  opacity: 1;
-}
-
-@keyframes neon-spin {
-  to {
-    --neon-angle: 360deg;
+@media (prefers-color-scheme: dark) {
+  .glass-card {
+    border-color: rgba(255, 255, 255, 0.20);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.02) 38%, transparent 100%),
+      rgba(72, 72, 80, 0.32);
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.38),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
 }
 
+/* Mốc "Sắp tới": ánh sáng hắt vào trong, không quầng đổ ra ngoài. */
+.glass-card-nearest {
+  isolation: isolate;
+}
+
+.glass-card-nearest > .glass-card {
+  position: relative;
+  z-index: 1;
+  background:
+    radial-gradient(60% 22% at 50% 104%, rgba(240, 249, 255, 0.65), rgba(14, 165, 233, 0.18) 48%, transparent 76%),
+    radial-gradient(140% 80% at 50% 118%, rgba(14, 165, 233, 0.24), rgba(14, 165, 233, 0.09) 38%, rgba(14, 165, 233, 0.03) 58%, transparent 74%),
+    radial-gradient(30% 45% at 2% 104%, rgba(14, 165, 233, 0.09), transparent 70%),
+    radial-gradient(30% 45% at 98% 104%, rgba(14, 165, 233, 0.09), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.16) 42%, rgba(255, 255, 255, 0.10) 100%),
+    rgba(255, 255, 255, 0.46);
+  box-shadow:
+    inset 0 -1px 0 rgba(125, 211, 252, 0.40),
+    inset 0 -14px 28px rgba(14, 165, 233, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glass-card-nearest > .glass-card {
+    background:
+      radial-gradient(60% 22% at 50% 104%, rgba(224, 242, 254, 0.48), rgba(56, 189, 248, 0.20) 48%, transparent 76%),
+      radial-gradient(140% 80% at 50% 118%, rgba(56, 189, 248, 0.44), rgba(34, 211, 238, 0.18) 38%, rgba(34, 211, 238, 0.04) 58%, transparent 74%),
+      radial-gradient(30% 45% at 2% 104%, rgba(56, 189, 248, 0.16), transparent 70%),
+      radial-gradient(30% 45% at 98% 104%, rgba(56, 189, 248, 0.16), transparent 70%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.02) 38%, transparent 100%),
+      rgba(72, 72, 80, 0.32);
+    box-shadow:
+      inset 0 -1px 0 rgba(186, 230, 253, 0.45),
+      inset 0 -14px 28px rgba(34, 211, 238, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+}
+
+/* Nút sửa/xóa hiện lên khi vuốt ngang card: bounce theo hướng vuốt, đóng thì đẩy ngược ra. */
+@keyframes swipe-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.swipe-fade {
+  animation: swipe-fade-in 140ms ease-out;
+}
+
+@keyframes swipe-bounce-in {
+  0% {
+    opacity: 0;
+    transform: translateX(40px) scale(0.8);
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(-7px) scale(1.06);
+  }
+  78% {
+    transform: translateX(3px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.swipe-bounce {
+  animation: swipe-bounce-in 340ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.swipe-bounce:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+@keyframes swipe-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.swipe-fade-out {
+  animation: swipe-fade-out 220ms ease-in forwards;
+}
+
+@keyframes swipe-bounce-out {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  20% {
+    transform: translateX(-6px) scale(1.02);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(46px) scale(0.85);
+  }
+}
+
+.swipe-bounce-out {
+  animation: swipe-bounce-out 260ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Nút ngoài (xóa) rời trước, nút trong (sửa) theo sau. */
+.swipe-bounce-out:nth-child(1) {
+  animation-delay: 50ms;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .neon-card::before,
-  .neon-card::after {
+  .swipe-fade,
+  .swipe-bounce,
+  .swipe-fade-out,
+  .swipe-bounce-out {
     animation: none;
+  }
+
+  .swipe-fade-out,
+  .swipe-bounce-out {
+    opacity: 0;
   }
 }

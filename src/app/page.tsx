@@ -1,7 +1,8 @@
 'use client';
 
-import { startTransition, useEffect, useRef, useState, type FormEvent } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Car, Bike, Wrench, Settings, Plus, ChevronDown, Check, Loader2, MapPin, Pencil, X, Trash2, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { addMonthsClamped, parseDateInputValue, toDateInputValue } from '@/lib/date';
 import { supabase } from '@/lib/supabaseClient';
 
 export type MaintenanceTier = 'CẤP NHỎ' | 'CẤP TRUNG BÌNH' | 'CẤP TRUNG BÌNH LỚN' | 'CẤP LỚN';
@@ -49,6 +50,8 @@ type TimelineItem = {
   maintenance_items?: MaintenanceItem[];
   isFuture: boolean;
   isNearest: boolean;
+  // Mốc "Sắp tới" gần hạn theo ODO hay theo ngày hơn.
+  closerSide?: 'ODO' | 'DATE';
 };
 
 // Trạng thái tải của từng nguồn dữ liệu (xe / lịch sử bảo dưỡng).
@@ -73,11 +76,17 @@ const EMPTY_VEHICLE_FORM: VehicleFormValues = {
 // Một dòng "mục thực hiện" trong form; giá tiền giữ dạng chuỗi để cho phép rỗng.
 type ServiceFormItem = {
   key: string;
+  // id của row trong maintenance_items; không có = mục mới khi sửa sự kiện.
+  id?: string;
   name: string;
   price: string;
 };
 
 type ServiceFormValues = {
+  // Có id = đang sửa sự kiện đã tồn tại; không có = tạo mới.
+  editingEventId?: string;
+  // id các maintenance_items gốc, dùng để xóa mục đã bị bỏ khi sửa.
+  original_item_ids: string[];
   event_type: MaintenanceEvent['event_type'];
   maintenance_tier: MaintenanceTier;
   // Tiêu đề tự nhập, chỉ dùng cho SỬA CHỮA (BẢO DƯỠNG lấy tiêu đề từ mốc).
@@ -111,22 +120,6 @@ const FORM_FIELD_CLASS =
 function maintenanceTitle(tier: MaintenanceTier) {
   const label = MAINTENANCE_TIERS.find((option) => option.value === tier)?.label ?? tier;
   return `Bảo dưỡng ${label.toLowerCase()}`;
-}
-
-// "yyyy-mm-dd" theo giờ máy người dùng — không dùng toISOString() để tránh lệch múi giờ.
-function toDateInputValue(date: Date) {
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-// Đọc "yyyy-mm-dd" thành Date tại 00:00 giờ máy (không parse theo UTC như new Date(string)).
-function parseDateInputValue(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function formatDateDisplay(value: string) {
@@ -275,16 +268,39 @@ function ServiceDatePicker({ value, maxDate, month, onChangeMonth, onSelect }: S
 
 let serviceItemKeySeed = 0;
 
-function createServiceItem(name = '', price = ''): ServiceFormItem {
+function createServiceItem(name = '', price = '', id?: string): ServiceFormItem {
   serviceItemKeySeed += 1;
-  return { key: `service-item-${serviceItemKeySeed}`, name, price };
+  return { key: `service-item-${serviceItemKeySeed}`, id, name, price };
 }
 
 // Chỉ gọi trong event handler khi mở form: đọc ngày hiện tại ở đây an toàn cho prerender.
-function createServiceFormValues(vehicle: Vehicle): ServiceFormValues {
+function createServiceFormValues(vehicle: Vehicle, event?: TimelineItem): ServiceFormValues {
   const today = toDateInputValue(new Date());
 
+  if (event) {
+    const maxDate = event.due_date > today ? event.due_date : today;
+    const eventItems = event.maintenance_items ?? [];
+
+    return {
+      editingEventId: event.id,
+      original_item_ids: eventItems.map((item) => item.id),
+      event_type: event.event_type,
+      maintenance_tier: event.maintenance_tier ?? 'CẤP NHỎ',
+      // BẢO DƯỠNG lấy tiêu đề từ mốc; SỬA CHỮA giữ tiêu đề đã nhập.
+      title: event.event_type === 'SỬA CHỮA' ? event.title : '',
+      location: event.location ?? '',
+      due_date: event.due_date,
+      max_date: maxDate,
+      target_odo: event.target_odo.toString(),
+      notes: event.notes ?? '',
+      items: eventItems.length
+        ? eventItems.map((item) => createServiceItem(item.name, item.price?.toString() ?? '', item.id))
+        : [createServiceItem()],
+    };
+  }
+
   return {
+    original_item_ids: [],
     event_type: 'BẢO DƯỠNG',
     maintenance_tier: 'CẤP NHỎ',
     title: '',
@@ -310,9 +326,21 @@ function generateNextMilestone(currentOdo: number, type: 'CAR' | 'MOTORBIKE', la
 
   const nextOdo = Math.floor(currentOdo / step) * step + step;
 
-  const baseDate = lastMaintenanceDate ? new Date(lastMaintenanceDate) : new Date();
-  const nextDate = new Date(baseDate);
-  nextDate.setMonth(nextDate.getMonth() + monthsStep);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Ngày trong DB là "yyyy-mm-dd" → parse theo giờ máy, tránh bị hiểu là UTC.
+  const baseDate = (lastMaintenanceDate ? parseDateInputValue(lastMaintenanceDate) : null) ?? today;
+
+  // Kẹp ngày cuối tháng để không tràn sang tháng sau (31/08 + 6 tháng → 28/02).
+  const nextDate = addMonthsClamped(baseDate, monthsStep);
+
+  // So sánh tỉ lệ còn lại của chu kỳ ODO và chu kỳ thời gian để biết bên nào gần hạn hơn.
+  const kmRemaining = Math.max(0, nextOdo - currentOdo);
+  const intervalDays = Math.max(1, (nextDate.getTime() - baseDate.getTime()) / 86_400_000);
+  const daysRemaining = Math.max(0, (nextDate.getTime() - today.getTime()) / 86_400_000);
+  const closerSide: 'ODO' | 'DATE' =
+    kmRemaining / step <= daysRemaining / intervalDays ? 'ODO' : 'DATE';
 
   let tier: MaintenanceTier = 'CẤP NHỎ';
   let title = 'Bảo dưỡng cấp nhỏ';
@@ -373,9 +401,10 @@ function generateNextMilestone(currentOdo: number, type: 'CAR' | 'MOTORBIKE', la
     event_type: 'BẢO DƯỠNG' as const,
     maintenance_tier: tier,
     target_odo: nextOdo,
-    due_date: nextDate.toISOString(), 
+    due_date: toDateInputValue(nextDate),
     isFuture: true,
     isNearest: true,
+    closerSide,
     total_cost: 0,
     maintenance_items: defaultItems.map((item, idx) => ({ id: `v-item-${idx}`, ...item }))
   };
@@ -410,6 +439,23 @@ export default function Dashboard() {
   // Tháng đang xem của calendar; null = calendar đang đóng.
   const [serviceDatePickerMonth, setServiceDatePickerMonth] = useState<CalendarMonth | null>(null);
   const serviceDatePickerRef = useRef<HTMLDivElement | null>(null);
+
+  // Card lịch sử đang mở 2 nút thao tác (sửa/xóa).
+  const [swipedEventId, setSwipedEventId] = useState<string | null>(null);
+  // Card đang chạy animation đẩy 2 nút ra ngoài trước khi unmount.
+  const [closingActionId, setClosingActionId] = useState<string | null>(null);
+  const swipeGestureRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    horizontal: boolean;
+  } | null>(null);
+  // Chặn cú click phát sinh ngay sau thao tác vuốt.
+  const suppressCardClickRef = useRef(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<TimelineItem | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletingEvent, setIsDeletingEvent] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -519,6 +565,7 @@ export default function Dashboard() {
 
   const openCreateVehicleForm = () => {
     setIsMenuOpen(false);
+    setSwipedEventId(null);
     setVehicleFormMode('create');
     setEditingVehicle(null);
     setVehicleFormValues(EMPTY_VEHICLE_FORM);
@@ -527,6 +574,7 @@ export default function Dashboard() {
 
   const openEditVehicleForm = (vehicle: Vehicle) => {
     setIsMenuOpen(false);
+    setSwipedEventId(null);
     setVehicleFormMode('edit');
     setEditingVehicle(vehicle);
     setVehicleFormValues({
@@ -632,6 +680,7 @@ export default function Dashboard() {
   const openServiceForm = () => {
     if (!activeVehicle) return;
     setIsMenuOpen(false);
+    setSwipedEventId(null);
     setServiceFormError(null);
     setServiceDatePickerMonth(null);
     setServiceForm(createServiceFormValues(activeVehicle));
@@ -695,10 +744,139 @@ export default function Dashboard() {
     );
   };
 
+  const handleCardPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const eventId = event.currentTarget.dataset.eventId;
+    if (!eventId) return;
+    // Lần chạm mới bắt đầu → cho phép click bình thường trở lại.
+    suppressCardClickRef.current = false;
+    swipeGestureRef.current = {
+      id: eventId,
+      startX: event.clientX,
+      startY: event.clientY,
+      horizontal: false,
+    };
+  };
+
+  const handleCardPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = swipeGestureRef.current;
+    if (!gesture) return;
+
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+
+    // Chỉ nhận diện vuốt ngang khi đã vượt ngưỡng và rõ hơn chiều dọc,
+    // để vuốt dọc vẫn cuộn trang bình thường.
+    if (!gesture.horizontal) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+        gesture.horizontal = true;
+      } else {
+        return;
+      }
+    }
+
+    suppressCardClickRef.current = true;
+
+    if (dx < -36) openCardActions(gesture.id);
+    else if (dx > 36 && swipedEventId) {
+      closeCardActions(swipedEventId);
+    }
+  };
+
+  const endCardGesture = () => {
+    swipeGestureRef.current = null;
+  };
+
+  const openCardActions = useCallback((id: string) => {
+    setClosingActionId(null);
+    setSwipedEventId(id);
+  }, []);
+
+  const closeCardActions = useCallback((id: string) => {
+    setSwipedEventId(null);
+    setClosingActionId(id);
+  }, []);
+
+  const openEditServiceForm = (item: TimelineItem) => {
+    if (!activeVehicle || item.isFuture) return;
+    setSwipedEventId(null);
+    setServiceFormError(null);
+    setServiceDatePickerMonth(null);
+    setServiceForm(createServiceFormValues(activeVehicle, item));
+  };
+
+  const openDeleteConfirm = (item: TimelineItem) => {
+    if (item.isFuture) return;
+    setSwipedEventId(null);
+    setDeleteTarget(item);
+    setDeleteError(null);
+  };
+
+  const closeDeleteConfirm = () => {
+    if (isDeletingEvent) return;
+    setDeleteTarget(null);
+    setDeleteError(null);
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!deleteTarget || isDeletingEvent) return;
+
+    setIsDeletingEvent(true);
+    setDeleteError(null);
+
+    try {
+      // maintenance_items không có ON DELETE CASCADE → xóa mục trước, sự kiện sau.
+      const { error: itemsError } = await supabase
+        .from('maintenance_items')
+        .delete()
+        .eq('event_id', deleteTarget.id);
+
+      if (itemsError) throw itemsError;
+
+      const { error: eventError } = await supabase
+        .from('maintenance_events')
+        .delete()
+        .eq('id', deleteTarget.id);
+
+      if (eventError) {
+        // Xóa sự kiện lỗi sau khi đã xóa mục → thử khôi phục các mục cũ.
+        const restoreItems = deleteTarget.maintenance_items ?? [];
+        if (restoreItems.length > 0) {
+          const { error: restoreError } = await supabase.from('maintenance_items').insert(
+            restoreItems.map((item) => ({
+              id: item.id,
+              event_id: deleteTarget.id,
+              name: item.name,
+              price: item.price ?? 0,
+            }))
+          );
+
+          if (restoreError) {
+            console.error('Không khôi phục được các mục sau khi xóa sự kiện thất bại:', restoreError);
+          }
+        }
+        throw eventError;
+      }
+
+      setDeleteTarget(null);
+      retry();
+    } catch (err) {
+      console.error('Lỗi khi xóa sự kiện:', err);
+      const code = (err as { code?: string } | null)?.code;
+      setDeleteError(
+        code === '42501'
+          ? 'Không có quyền xóa dữ liệu. Kiểm tra RLS của maintenance_events và maintenance_items.'
+          : 'Không xóa được sự kiện. Kiểm tra kết nối rồi thử lại.'
+      );
+    } finally {
+      setIsDeletingEvent(false);
+    }
+  };
+
   const handleServiceSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!serviceForm || isSavingService || !activeVehicle) return;
 
+    const editingEventId = serviceForm.editingEventId;
     const isMaintenance = serviceForm.event_type === 'BẢO DƯỠNG';
     const title = isMaintenance
       ? maintenanceTitle(serviceForm.maintenance_tier)
@@ -712,6 +890,7 @@ export default function Dashboard() {
     // Bỏ các dòng để trống tên; giá trống coi như 0.
     const items = serviceForm.items
       .map((item) => ({
+        id: item.id,
         name: item.name.trim(),
         price: item.price.trim() === '' ? 0 : Number(item.price.trim()),
       }))
@@ -721,7 +900,7 @@ export default function Dashboard() {
       setServiceFormError('ODO phải là số nguyên không âm.');
       return;
     }
-    if (!dueDate || Number.isNaN(new Date(dueDate).getTime())) {
+    if (!dueDate || !parseDateInputValue(dueDate)) {
       setServiceFormError('Vui lòng chọn ngày làm dịch vụ.');
       return;
     }
@@ -749,74 +928,138 @@ export default function Dashboard() {
     setServiceFormError(null);
 
     try {
-      // PostgREST của project này không nhận nested insert cho maintenance_items,
-      // nên ghi 2 bước: sự kiện trước, rồi các mục thực hiện.
-      const { data, error } = await supabase
-        .from('maintenance_events')
-        .insert({
-          vehicle_id: activeVehicle.id,
-          title,
-          event_type: serviceForm.event_type,
-          maintenance_tier: isMaintenance ? serviceForm.maintenance_tier : null,
-          target_odo: odo,
-          due_date: dueDate,
-          is_critical: false,
-          total_cost: totalCost,
-          location: location || null,
-          notes: notes || null,
-        })
-        .select(
-          `
-            id,
-            vehicle_id,
-            title,
-            event_type,
-            maintenance_tier,
-            target_odo,
-            due_date,
-            is_critical,
-            total_cost,
-            location,
-            notes
-          `
-        )
-        .single();
-
-      if (error) throw error;
-
-      const createdEvent = data as unknown as MaintenanceEvent;
-
-      const { data: createdItems, error: itemsError } = await supabase
-        .from('maintenance_items')
-        .insert(
-          items.map((item) => ({
-            event_id: createdEvent.id,
-            name: item.name,
-            price: item.price,
-          }))
-        )
-        .select('id, name, price');
-
-      if (itemsError) {
-        // Không để lại sự kiện rỗng nếu ghi hạng mục thất bại.
-        const { error: cleanupError } = await supabase
+      if (editingEventId) {
+        const { error: updateError } = await supabase
           .from('maintenance_events')
-          .delete()
-          .eq('id', createdEvent.id);
+          .update({
+            title,
+            event_type: serviceForm.event_type,
+            maintenance_tier: isMaintenance ? serviceForm.maintenance_tier : null,
+            target_odo: odo,
+            due_date: dueDate,
+            total_cost: totalCost,
+            location: location || null,
+            notes: notes || null,
+          })
+          .eq('id', editingEventId);
 
-        if (cleanupError) {
-          console.error('Không xoá được sự kiện vừa tạo sau khi ghi hạng mục lỗi:', cleanupError);
+        if (updateError) throw updateError;
+
+        const keptIds = new Set(items.flatMap((item) => (item.id ? [item.id] : [])));
+        const removedIds = serviceForm.original_item_ids.filter((id) => !keptIds.has(id));
+        const existingItems = items.flatMap((item) =>
+          item.id ? [{ id: item.id, name: item.name, price: item.price }] : []
+        );
+        const newItems = items.filter((item) => !item.id);
+
+        if (existingItems.length > 0) {
+          const { error: updateItemsError } = await supabase
+            .from('maintenance_items')
+            .upsert(
+              existingItems.map((item) => ({
+                id: item.id,
+                event_id: editingEventId,
+                name: item.name,
+                price: item.price,
+              }))
+            );
+
+          if (updateItemsError) throw updateItemsError;
         }
-        throw itemsError;
+
+        if (newItems.length > 0) {
+          const { error: insertItemsError } = await supabase
+            .from('maintenance_items')
+            .insert(
+              newItems.map((item) => ({
+                event_id: editingEventId,
+                name: item.name,
+                price: item.price,
+              }))
+            );
+
+          if (insertItemsError) throw insertItemsError;
+        }
+
+        // Xóa mục đã bỏ sau cùng, tránh mất dữ liệu nếu các bước trên lỗi.
+        if (removedIds.length > 0) {
+          const { error: deleteItemsError } = await supabase
+            .from('maintenance_items')
+            .delete()
+            .in('id', removedIds);
+
+          if (deleteItemsError) throw deleteItemsError;
+        }
+      } else {
+        // PostgREST của project này không nhận nested insert cho maintenance_items,
+        // nên ghi 2 bước: sự kiện trước, rồi các mục thực hiện.
+        const { data, error } = await supabase
+          .from('maintenance_events')
+          .insert({
+            vehicle_id: activeVehicle.id,
+            title,
+            event_type: serviceForm.event_type,
+            maintenance_tier: isMaintenance ? serviceForm.maintenance_tier : null,
+            target_odo: odo,
+            due_date: dueDate,
+            is_critical: false,
+            total_cost: totalCost,
+            location: location || null,
+            notes: notes || null,
+          })
+          .select(
+            `
+              id,
+              vehicle_id,
+              title,
+              event_type,
+              maintenance_tier,
+              target_odo,
+              due_date,
+              is_critical,
+              total_cost,
+              location,
+              notes
+            `
+          )
+          .single();
+
+        if (error) throw error;
+
+        const createdEvent = data as unknown as MaintenanceEvent;
+
+        const { data: createdItems, error: itemsError } = await supabase
+          .from('maintenance_items')
+          .insert(
+            items.map((item) => ({
+              event_id: createdEvent.id,
+              name: item.name,
+              price: item.price,
+            }))
+          )
+          .select('id, name, price');
+
+        if (itemsError) {
+          // Không để lại sự kiện rỗng nếu ghi hạng mục thất bại.
+          const { error: cleanupError } = await supabase
+            .from('maintenance_events')
+            .delete()
+            .eq('id', createdEvent.id);
+
+          if (cleanupError) {
+            console.error('Không xoá được sự kiện vừa tạo sau khi ghi hạng mục lỗi:', cleanupError);
+          }
+          throw itemsError;
+        }
+
+        const createdEventWithItems: MaintenanceEvent = {
+          ...createdEvent,
+          maintenance_items: (createdItems as unknown as MaintenanceItem[] | null) ?? [],
+        };
+
+        setEvents((prev) => [createdEventWithItems, ...prev]);
+        setEventsState('ready');
       }
-
-      const createdEventWithItems: MaintenanceEvent = {
-        ...createdEvent,
-        maintenance_items: (createdItems as unknown as MaintenanceItem[] | null) ?? [],
-      };
-
-      setEvents((prev) => [createdEventWithItems, ...prev]);
-      setEventsState('ready');
 
       // ODO ghi nhận lớn hơn ODO của xe → cập nhật luôn ODO hiện tại.
       if (odo > activeVehicle.current_odo) {
@@ -839,6 +1082,9 @@ export default function Dashboard() {
       setServiceForm(null);
       setServiceFormError(null);
       setServiceDatePickerMonth(null);
+
+      // Sửa cần đọc lại để đồng bộ items; tạo mới đã cập nhật state local.
+      if (editingEventId) retry();
     } catch (err) {
       console.error('Lỗi khi lưu sự kiện bảo dưỡng:', err);
       const code = (err as { code?: string } | null)?.code;
@@ -848,7 +1094,7 @@ export default function Dashboard() {
           'Không có quyền ghi dữ liệu bảo dưỡng. Kiểm tra RLS của bảng maintenance_events và maintenance_items.'
         );
       } else if (code === '23503') {
-        setServiceFormError('Xe này không còn tồn tại. Tải lại trang rồi thử lại.');
+        setServiceFormError('Sự kiện hoặc xe không còn tồn tại. Tải lại trang rồi thử lại.');
       } else {
         setServiceFormError('Không lưu được sự kiện. Kiểm tra kết nối rồi thử lại.');
       }
@@ -862,10 +1108,17 @@ export default function Dashboard() {
 
   const pastEvents = [...activeEvents].sort((a, b) => b.target_odo - a.target_odo);
   
-  const lastMaintenance = pastEvents.find(e => e.event_type === 'BẢO DƯỠNG');
+  // Lần bảo dưỡng gần nhất theo ngày làm, không theo thứ tự ODO — người dùng có thể
+  // nhập bổ sung một lần bảo dưỡng cũ với ODO thấp hơn.
+  const lastMaintenanceDate = activeEvents
+    .filter((event) => event.event_type === 'BẢO DƯỠNG')
+    .reduce<string | undefined>(
+      (latest, event) => (!latest || event.due_date > latest ? event.due_date : latest),
+      undefined
+    );
 
-  const virtualUpcomingEvent = activeVehicle 
-    ? generateNextMilestone(activeVehicle.current_odo, activeVehicle.vehicle_type, lastMaintenance?.due_date) 
+  const virtualUpcomingEvent = activeVehicle
+    ? generateNextMilestone(activeVehicle.current_odo, activeVehicle.vehicle_type, lastMaintenanceDate)
     : null;
 
   const unifiedTimeline: TimelineItem[] = [
@@ -874,13 +1127,13 @@ export default function Dashboard() {
   ];
 
   // Năm của mốc "Sắp tới" — chỉ parse từ dữ liệu, không đọc giờ hiện tại khi render.
-  const upcomingYear = virtualUpcomingEvent
-    ? new Date(virtualUpcomingEvent.due_date).getFullYear().toString()
-    : null;
+  const upcomingDate = virtualUpcomingEvent ? parseDateInputValue(virtualUpcomingEvent.due_date) : null;
+  const upcomingYear = upcomingDate ? upcomingDate.getFullYear().toString() : null;
 
   const groupedTimeline: { year: string; items: typeof unifiedTimeline }[] = [];
   unifiedTimeline.forEach((item) => {
-    const year = item.due_date ? new Date(item.due_date).getFullYear().toString() : 'Khác';
+    const itemDate = parseDateInputValue(item.due_date);
+    const year = itemDate ? itemDate.getFullYear().toString() : 'Khác';
     const lastGroup = groupedTimeline[groupedTimeline.length - 1];
 
     if (lastGroup && lastGroup.year === year) {
@@ -952,6 +1205,89 @@ export default function Dashboard() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isServiceFormOpen, isSavingService, serviceDatePickerMonth]);
+
+  useEffect(() => {
+    if (!deleteTarget) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isDeletingEvent) {
+        setDeleteTarget(null);
+        setDeleteError(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteTarget, isDeletingEvent]);
+
+  // Chặn copy/bôi đen nội dung hiển thị; vẫn cho phép trong ô nhập.
+  useEffect(() => {
+    // Inject lại rule bằng JS để không phụ thuộc cache CSS của trình duyệt.
+    const style = document.createElement('style');
+    style.textContent = `
+      *, *::before, *::after {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+      }
+      input, textarea, [contenteditable="true"] {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+        -webkit-touch-callout: default !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    const isEditableTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]');
+
+    const handleCopy = (event: ClipboardEvent) => {
+      if (!isEditableTarget(event.target)) event.preventDefault();
+    };
+
+    const handleSelectStart = (event: Event) => {
+      if (!isEditableTarget(event.target)) event.preventDefault();
+    };
+
+    const handleDragStart = (event: DragEvent) => {
+      if (!isEditableTarget(event.target)) event.preventDefault();
+    };
+
+    // Capture phase để chặn trước mọi handler khác.
+    document.addEventListener('copy', handleCopy, true);
+    document.addEventListener('selectstart', handleSelectStart, true);
+    document.addEventListener('dragstart', handleDragStart, true);
+    return () => {
+      style.remove();
+      document.removeEventListener('copy', handleCopy, true);
+      document.removeEventListener('selectstart', handleSelectStart, true);
+      document.removeEventListener('dragstart', handleDragStart, true);
+    };
+  }, []);
+
+  // Chạm ra ngoài card đang mở thao tác → đẩy 2 nút ra rồi đóng.
+  useEffect(() => {
+    if (!swipedEventId) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(`[data-event-id="${swipedEventId}"]`)) {
+        return;
+      }
+      closeCardActions(swipedEventId);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
+  }, [swipedEventId, closeCardActions]);
+
+  // Giữ nút đủ lâu để chạy animation đẩy ra rồi mới unmount.
+  useEffect(() => {
+    if (!closingActionId) return;
+
+    const timer = window.setTimeout(() => setClosingActionId(null), 340);
+    return () => window.clearTimeout(timer);
+  }, [closingActionId]);
 
   // Calendar mở ngay dưới ô ngày — cuộn vào tầm nhìn để không bị khuất trong form.
   useEffect(() => {
@@ -1043,6 +1379,7 @@ export default function Dashboard() {
                               setEventsState('loading');
                             }
                             setIsMenuOpen(false);
+                            setSwipedEventId(null);
                           }}
                           className="flex-1 min-w-0 flex items-center gap-3 sm:gap-4 px-4 py-3 sm:px-5 sm:py-4 text-left"
                         >
@@ -1150,16 +1487,22 @@ export default function Dashboard() {
                       <div className="space-y-6 sm:space-y-8">
                         {group.items.map((item) => {
                           const isNearest = item.isFuture && item.isNearest;
+                          const odoIsCloser = isNearest && item.closerSide !== 'DATE';
+                          const dateIsCloser = isNearest && item.closerSide === 'DATE';
                           const isExpanded = expandedCards.includes(item.id);
+                          const isActionOpen = !item.isFuture && swipedEventId === item.id;
+                          const isActionClosing = !item.isFuture && closingActionId === item.id;
+                          const showActions = isActionOpen || isActionClosing;
 
-                          const cardWrapperClass = "relative border rounded-2xl shadow-sm overflow-hidden flex flex-col border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60";
+                          const cardWrapperClass = "glass-card relative rounded-3xl overflow-hidden flex flex-col";
 
-                          let iconBgClass = "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300";
+                          let iconBgClass = "bg-white/50 dark:bg-white/[0.07] border-white/70 dark:border-white/10 text-zinc-600 dark:text-zinc-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]";
                           if (item.event_type === 'SỬA CHỮA') {
-                            iconBgClass = "bg-amber-50 dark:bg-amber-950/30 border-amber-200/50 dark:border-amber-900/50 text-amber-500 dark:text-amber-400";
+                            iconBgClass = "bg-amber-50/60 dark:bg-amber-950/25 border-amber-200/60 dark:border-amber-900/40 text-amber-600 dark:text-amber-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]";
                           }
 
-                          const formattedDate = new Date(item.due_date).toLocaleDateString('vi-VN');
+                          const itemDate = parseDateInputValue(item.due_date);
+                          const formattedDate = itemDate ? itemDate.toLocaleDateString('vi-VN') : item.due_date;
                           const hasItems = item.maintenance_items && item.maintenance_items.length > 0;
 
                           const statusBadge = item.isFuture ? null : (
@@ -1176,34 +1519,74 @@ export default function Dashboard() {
 
                               {/* CỘT TRÁI */}
                               <div className="w-[72px] sm:w-[96px] md:w-[112px] flex-shrink-0 text-right pr-1.5 sm:pr-2 md:pr-3 flex flex-col items-end justify-center">
-                                <span className={`inline-block text-[11px] sm:text-xs md:text-sm font-mono py-0.5 sm:py-1 rounded-md
-                                  ${isNearest ? 'text-emerald-600 dark:text-emerald-500 font-bold' : 'text-zinc-600 dark:text-zinc-300 font-bold'}`}>
+                                <span
+                                  className={`inline-block font-mono py-0.5 sm:py-1 rounded-md ${
+                                    isNearest
+                                      ? odoIsCloser
+                                        ? 'text-xs sm:text-sm md:text-base text-sky-600 dark:text-sky-400 font-bold'
+                                        : 'text-[10px] sm:text-[11px] md:text-xs text-sky-600/70 dark:text-sky-400/70 font-medium'
+                                      : 'text-[11px] sm:text-xs md:text-sm text-zinc-600 dark:text-zinc-300 font-bold'
+                                  }`}
+                                >
                                   {item.target_odo.toLocaleString('vi-VN')} km
                                 </span>
-                                <span className={`text-[10px] sm:text-xs mt-1 sm:mt-1.5 tracking-widest ${isNearest ? 'text-emerald-600 dark:text-emerald-500 font-bold' : 'text-zinc-400 font-medium'}`}>
+                                {isNearest && (
+                                  <span
+                                    aria-hidden="true"
+                                    className="my-1 block h-px w-12 sm:w-16 md:w-20 bg-sky-500/40 dark:bg-sky-400/40"
+                                  />
+                                )}
+                                <span
+                                  className={`mt-1 sm:mt-1.5 tracking-widest ${
+                                    isNearest
+                                      ? dateIsCloser
+                                        ? 'text-[11px] sm:text-sm text-sky-600 dark:text-sky-400 font-bold'
+                                        : 'text-[9px] sm:text-[11px] text-sky-600/70 dark:text-sky-400/70 font-medium'
+                                      : 'text-[10px] sm:text-xs text-zinc-400 font-medium'
+                                  }`}
+                                >
                                   {formattedDate}
                                 </span>
                               </div>
                               <div className="flex items-center">
-                                <div className={`w-2 md:w-3 h-[2px] z-10 ${isNearest ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}></div>
+                                <div className={`w-2 md:w-3 h-[2px] z-10 ${isNearest ? 'bg-sky-500 dark:bg-sky-400' : 'bg-zinc-300 dark:bg-zinc-700'}`}></div>
                               </div>
                               <div className="relative flex items-center justify-center w-0">
                                 <div className={`absolute rounded-full z-10
                                   ${isNearest
-                                    ? 'bg-emerald-500 w-3 h-3 md:w-4 md:h-4 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+                                    ? 'bg-sky-500 dark:bg-sky-400 w-3 h-3 md:w-4 md:h-4 shadow-[0_0_8px_rgba(56,189,248,0.6)]'
                                     : 'bg-zinc-400/50 dark:bg-zinc-500/50 w-2 h-2 md:w-2.5 md:h-2.5'}`}>
                                 </div>
                               </div>
 
                               {/* CỘT PHẢI */}
                               <div className="ml-3 sm:ml-5 md:ml-8 flex-1 min-w-0 py-1">
-                                <div className={`relative rounded-2xl ${isNearest ? 'neon-card' : ''}`}>
+                                <div
+                                  className={`relative rounded-3xl ${isNearest ? 'glass-card-nearest' : ''} ${!item.isFuture ? 'touch-pan-y select-none' : ''}`}
+                                  data-event-id={!item.isFuture ? item.id : undefined}
+                                  onPointerDown={!item.isFuture ? handleCardPointerDown : undefined}
+                                  onPointerMove={!item.isFuture ? handleCardPointerMove : undefined}
+                                  onPointerUp={!item.isFuture ? endCardGesture : undefined}
+                                  onPointerCancel={!item.isFuture ? endCardGesture : undefined}
+                                >
                                   <div className={cardWrapperClass}>
                                   
                                   {/* KHỐI OVERVIEW */}
                                   <div 
-                                    className={`flex flex-col ${hasItems ? 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group/overview' : ''}`}
-                                    onClick={() => hasItems && toggleCard(item.id)}
+                                    className={`flex flex-col ${hasItems ? 'cursor-pointer hover:bg-white/40 dark:hover:bg-white/[0.06] transition-colors group/overview' : ''}`}
+                                    onClick={() => {
+                                      // Bỏ qua click phát sinh ngay sau thao tác vuốt.
+                                      if (suppressCardClickRef.current) {
+                                        suppressCardClickRef.current = false;
+                                        return;
+                                      }
+                                      if (isActionOpen) {
+                                        closeCardActions(item.id);
+                                        return;
+                                      }
+                                      if (swipedEventId) closeCardActions(swipedEventId);
+                                      if (hasItems) toggleCard(item.id);
+                                    }}
                                   >
                                     <div className="p-3 sm:p-4 md:p-5 pb-1.5 sm:pb-2 flex gap-2.5 sm:gap-4 items-start">
                                       <div className={`mt-0.5 p-1.5 sm:p-2 rounded-xl border flex-shrink-0 h-fit ${iconBgClass}`}>
@@ -1228,7 +1611,7 @@ export default function Dashboard() {
 
                                             {/* Ghi Chú */}
                                             {item.notes && (
-                                              <div className="mt-2 sm:mt-3 text-xs sm:text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 bg-zinc-100/50 dark:bg-zinc-800/30 px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50">
+                                              <div className="mt-2 sm:mt-3 text-xs sm:text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 bg-zinc-900/[0.03] dark:bg-white/[0.04] px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-lg border border-zinc-900/5 dark:border-white/10">
                                                 <span className="font-semibold text-zinc-800 dark:text-zinc-200 mr-1.5">Ghi chú:</span>
                                                 {item.notes}
                                               </div>
@@ -1255,7 +1638,7 @@ export default function Dashboard() {
 
                                     {/* Mũi tên Dropdown CHỈ HIỆN nếu có danh sách vật tư bên trong */}
                                     {hasItems && (
-                                      <div className="flex justify-center items-center pb-1.5 sm:pb-2 pt-1 text-zinc-300 dark:text-zinc-600 group-hover/overview:text-zinc-500 dark:group-hover/overview:text-zinc-400 transition-colors">
+                                      <div className="flex justify-center items-center pb-1.5 sm:pb-2 pt-1 text-zinc-400 dark:text-white/30 group-hover/overview:text-zinc-600 dark:group-hover/overview:text-white/50 transition-colors">
                                         <ChevronDown size={20} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                                       </div>
                                     )}
@@ -1263,7 +1646,7 @@ export default function Dashboard() {
 
                                   {/* KHỐI DETAIL (Danh sách hạng mục / vật tư) */}
                                   {isExpanded && hasItems && (
-                                    <div className="px-3 sm:px-4 md:px-5 pb-3 sm:pb-4 md:pb-5 border-t border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30">
+                                    <div className="px-3 sm:px-4 md:px-5 pb-3 sm:pb-4 md:pb-5 border-t border-zinc-900/5 dark:border-white/10 bg-white/25 dark:bg-black/20">
                                       <div className="space-y-2 sm:space-y-3 pt-3 sm:pt-4">
                                         {item.maintenance_items?.map((detail) => (
                                           <div key={detail.id} className="flex justify-between text-xs sm:text-sm gap-2 sm:gap-3">
@@ -1275,6 +1658,42 @@ export default function Dashboard() {
                                         ))}
                                       </div>
                                     </div>
+                                  )}
+
+                                  {/* Nút sửa/xóa hiện khi vuốt ngang card lịch sử */}
+                                  {showActions && (
+                                    <>
+                                      <div className={`${isActionClosing ? 'swipe-fade-out' : 'swipe-fade'} pointer-events-none absolute inset-y-0 right-0 z-20 w-36 bg-gradient-to-l from-white/85 via-white/40 to-transparent dark:from-zinc-950/90 dark:via-zinc-950/50`} />
+                                      <div
+                                        className={`absolute right-3 top-1/2 z-30 flex -translate-y-1/2 items-center gap-2 ${isActionClosing ? 'pointer-events-none' : ''}`}
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                      >
+                                        <button
+                                          type="button"
+                                          aria-label={`Sửa ${item.title}`}
+                                          title="Sửa sự kiện"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openEditServiceForm(item);
+                                          }}
+                                          className={`${isActionClosing ? 'swipe-bounce-out' : 'swipe-bounce'} flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-zinc-900 shadow-[0_10px_24px_rgba(249,115,22,0.35)] ring-1 ring-white/30 transition-transform hover:scale-105 active:scale-95`}
+                                        >
+                                          <Pencil size={18} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          aria-label={`Xóa ${item.title}`}
+                                          title="Xóa sự kiện"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openDeleteConfirm(item);
+                                          }}
+                                          className={`${isActionClosing ? 'swipe-bounce-out' : 'swipe-bounce'} flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-[0_10px_24px_rgba(225,29,72,0.35)] ring-1 ring-white/20 transition-transform hover:scale-105 active:scale-95`}
+                                        >
+                                          <Trash2 size={18} />
+                                        </button>
+                                      </div>
+                                    </>
                                   )}
 
                                   </div>
@@ -1443,7 +1862,7 @@ export default function Dashboard() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 id="service-form-title" className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-100">
-                  Ghi nhận dịch vụ
+                  {serviceForm.editingEventId ? 'Chỉnh sửa dịch vụ' : 'Ghi nhận dịch vụ'}
                 </h2>
                 <p className="mt-1 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 truncate">
                   {activeVehicle.name}
@@ -1509,9 +1928,6 @@ export default function Dashboard() {
                     );
                   })}
                 </div>
-                <p className="mt-1.5 text-[11px] sm:text-xs text-zinc-400 dark:text-zinc-500">
-                  Tiêu đề sự kiện: {maintenanceTitle(serviceForm.maintenance_tier)}
-                </p>
               </fieldset>
             ) : (
               <label className="flex flex-col gap-1.5">
@@ -1670,10 +2086,77 @@ export default function Dashboard() {
                 className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 dark:bg-zinc-100 px-4 py-2 text-sm font-semibold text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-60 transition-colors"
               >
                 {isSavingService && <Loader2 size={16} className="animate-spin" />}
-                Lưu
+                {serviceForm.editingEventId ? 'Lưu thay đổi' : 'Lưu'}
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA SỰ KIỆN */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-zinc-950/50 backdrop-blur-sm sm:p-4"
+          onClick={closeDeleteConfirm}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-event-title"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full sm:max-w-sm max-h-[90dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl p-4 sm:p-6 flex flex-col gap-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 id="delete-event-title" className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-100">
+                  Xóa sự kiện?
+                </h2>
+                <p className="mt-1 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 truncate">
+                  {deleteTarget.title}
+                  <span className="mx-1.5 text-zinc-300 dark:text-zinc-600">•</span>
+                  {parseDateInputValue(deleteTarget.due_date)?.toLocaleDateString('vi-VN') ?? deleteTarget.due_date}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDeleteConfirm}
+                aria-label="Đóng"
+                className="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-300">
+              Thao tác này không thể hoàn tác. Các mục thực hiện của sự kiện cũng sẽ bị xóa.
+            </p>
+
+            {deleteError && (
+              <p className="rounded-lg border border-red-200/60 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs sm:text-sm text-red-600 dark:text-red-400">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={closeDeleteConfirm}
+                disabled={isDeletingEvent}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteEvent}
+                disabled={isDeletingEvent}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60 transition-colors"
+              >
+                {isDeletingEvent && <Loader2 size={16} className="animate-spin" />}
+                Xóa
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
