@@ -1496,9 +1496,9 @@ export default function Dashboard() {
 
                           const cardWrapperClass = "glass-card relative rounded-3xl overflow-hidden flex flex-col";
 
-                          let iconBgClass = "bg-white/50 dark:bg-white/[0.07] border-white/70 dark:border-white/10 text-zinc-600 dark:text-zinc-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]";
+                          let iconBgClass = "bg-white/60 dark:bg-white/[0.07] border-zinc-300/80 dark:border-white/10 text-zinc-600 dark:text-zinc-300 shadow-[0_1px_2px_rgba(24,24,27,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]";
                           if (item.event_type === 'SỬA CHỮA') {
-                            iconBgClass = "bg-amber-50/60 dark:bg-amber-950/25 border-amber-200/60 dark:border-amber-900/40 text-amber-600 dark:text-amber-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]";
+                            iconBgClass = "bg-amber-50/70 dark:bg-amber-950/25 border-amber-300/80 dark:border-amber-900/40 text-amber-600 dark:text-amber-400 shadow-[0_1px_2px_rgba(180,83,9,0.10),inset_0_1px_0_rgba(255,255,255,0.6)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]";
                           }
 
                           const itemDate = parseDateInputValue(item.due_date);
